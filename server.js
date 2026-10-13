@@ -498,6 +498,28 @@ app.get('/api/events', (req, res) => {
   req.on('close', () => { clearInterval(hb); clients.get(u.id).delete(res); });
 });
 
+function startServer(port, attempts = 0) {
+  const maxAttempts = 20;
+  const server = app.listen(port, () => {
+    console.log('');
+    console.log(`MedMate is running:  http://localhost:${port}`);
+    console.log(`Voice/AI engine:     ${KEY ? `${MODEL}` : 'Local only'}`);
+  });
+
+  server.on('error', err => {
+    if (err.code === 'EADDRINUSE') {
+      if (attempts >= maxAttempts) {
+        throw new Error(`Port ${port} is busy and no free port was found in range ${PORT}..${PORT + maxAttempts}.`);
+      }
+      const nextPort = port + 1;
+      console.warn(`Port ${port} is busy. Retrying on ${nextPort}...`);
+      startServer(nextPort, attempts + 1);
+      return;
+    }
+    throw err;
+  });
+}
+
 app.post('/api/assistant', auth, R(async (req, res) => {
   const p = patientOf(req, res); if (!p) return;
   const text = String((req.body && req.body.text) || '').trim().slice(0, 500);
@@ -519,4 +541,9 @@ app.post('/api/scan', auth, R(async (req, res) => {
 }));
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.listen(PORT, () => console.log(`\n  MedMate is running:  http://localhost:${PORT}\n  Voice/AI engine:     ${KEY ? 'Claude (' + MODEL + ')' : 'built-in assistant (add ANTHROPIC_API_KEY for every language)'}\n`));
+
+if (require.main === module) {
+  startServer(PORT);
+}
+
+module.exports = app;
